@@ -110,27 +110,92 @@ import (
 	"encoding/json"
 	"math/rand"
 	"time"
+	"sort"
 )
 
-const MaxX = 16000
-const MaxY = 9000
-const MaxStepSize = 1000
+const maxX = 16000
+const maxY = 9000
+const maxStepSize = 1000
+const globalTimeLimitInMilliseconds = 100
+const maxSteps = 2
+const populationSize = 100 * 2
 
 func main() {
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
+	timeChan := time.NewTimer(time.Millisecond * globalTimeLimitInMilliseconds).C
 
 	g := Game{}
-	path1 := g.GenerateRandomPath(10, r1)
-	path2 := g.GenerateRandomPath(10, r1)
-	Log(path1)
-	Log(path2)
-	Log(g.BreedPaths(path1, path2))
+	s1 := rand.NewSource(time.Now().UnixNano())
+	g.random = rand.New(s1)
+
+	bestPath := new(Path)
+Loop:
+	for {
+		select {
+		case <-timeChan:
+			fmt.Println("Timer expired")
+			break Loop
+		default:
+			bestPath = g.GetBestPath()
+		}
+	}
+	Log(g.generation)
+	Log("Best path")
+	Log(bestPath)
+}
+
+type Game struct {
+	population []*Path
+	random     *rand.Rand
+	generation uint64
+}
+
+func (game *Game) GetBestPath() *Path {
+	if len(game.population) < 1 {
+		for i := 0; i < populationSize; i++ {
+			game.population = append(game.population, game.GenerateRandomPath(maxSteps))
+		}
+	}
+
+	sort.Sort(ByScore(game.population))
+	game.eliminateBadIndividuals()
+	game.addNewRandomIndividuals()
+	game.crossBreedGoodIndividuals()
+	game.evaluatePopulation()
+	game.generation++
+	return game.doGetBestPath()
+}
+func (game Game) doGetBestPath() *Path {
+	return game.population[0]
+}
+func (game Game) crossBreedGoodIndividuals() {
+
+}
+func (game Game) addNewRandomIndividuals() {
+
+}
+func (game Game) eliminateBadIndividuals() {
+
+}
+
+func (game Game) evaluatePopulation() {
+	for _, path := range game.population {
+		if path.Score < 1 {
+			path.Score = rand.Intn(1000)
+		}
+	}
 }
 
 type Path struct {
 	Points []*Point `json:"Points"`
+	Score  int `json:"Score"`
 }
+
+// ByAge implements sort.Interface
+type ByScore []*Path
+
+func (population ByScore) Len() int           { return len(population) }
+func (population ByScore) Swap(i, j int)      { population[i], population[j] = population[j], population[i] }
+func (population ByScore) Less(i, j int) bool { return population[i].Score > population[j].Score }
 
 func (p *Path) addPoint(point *Point) *Path {
 	p.Points = append(p.Points, point)
@@ -152,11 +217,11 @@ func NewPoint(x float64, y float64) *Point {
 	p.X = math.Floor(x)
 	p.Y = math.Floor(y)
 	// points outside of the area are not allowed and truncated
-	if p.X > MaxX {
-		p.X = MaxX
+	if p.X > maxX {
+		p.X = maxX
 	}
-	if p.Y > MaxY {
-		p.Y = MaxY
+	if p.Y > maxY {
+		p.Y = maxY
 	}
 	if p.X < 0 {
 		p.X = 0
@@ -172,29 +237,26 @@ func Log(v interface{}) {
 	fmt.Printf(string(data) + "\n")
 }
 
-type Game struct {
-}
-
-func (g Game) GenerateRandomPath(n int, randomGenerator *rand.Rand) *Path {
+func (game Game) GenerateRandomPath(numberOfSteps int) *Path {
 	path := new(Path)
 	// start anywhere
 	startPoint := NewPoint(
-		randomGenerator.Float64()*MaxX,
-		randomGenerator.Float64()*MaxY,
+		game.random.Float64()*maxX,
+		game.random.Float64()*maxY,
 	)
 	path.addPoint(startPoint)
 
-	for i := 1; i < n; i++ {
+	for i := 1; i < numberOfSteps; i++ {
 		prevPoint := path.Points[len(path.Points)-1]
 		path.addPoint(NewPoint(
-			prevPoint.X+(randomGenerator.Float64()-0.5)*MaxStepSize,
-			prevPoint.Y+(randomGenerator.Float64()-0.5)*MaxStepSize,
+			prevPoint.X+(game.random.Float64()-0.5)*maxStepSize,
+			prevPoint.Y+(game.random.Float64()-0.5)*maxStepSize,
 		))
 	}
 	return path
 }
 
-func (g Game) BreedPaths(p1 *Path, p2 *Path) *Path {
+func (game Game) BreedPaths(p1 *Path, p2 *Path) *Path {
 	newPath := new(Path)
 	for i, point1 := range p1.Points {
 		point2 := p2.Points[i]
