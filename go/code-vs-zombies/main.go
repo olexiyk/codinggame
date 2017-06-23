@@ -118,7 +118,8 @@ const maxY = 9000
 const maxStepSize = 1000
 const globalTimeLimitInMilliseconds = 100
 const maxSteps = 2
-const populationSize = 100 * 2
+const populationSize = 1000 * 2
+const randomnessPercent = 0.3
 
 func main() {
 	timeChan := time.NewTimer(time.Millisecond * globalTimeLimitInMilliseconds).C
@@ -136,6 +137,9 @@ Loop:
 			break Loop
 		default:
 			bestPath = g.GetBestPath()
+			//Log(g.generation)
+			//Log("Best path")
+			//Log(bestPath)
 		}
 	}
 	Log(g.generation)
@@ -150,37 +154,39 @@ type Game struct {
 }
 
 func (game *Game) GetBestPath() *Path {
+	// initial population
 	if len(game.population) < 1 {
 		for i := 0; i < populationSize; i++ {
 			game.population = append(game.population, game.GenerateRandomPath(maxSteps))
 		}
 	}
-
 	sort.Sort(ByScore(game.population))
-	game.eliminateBadIndividuals()
-	game.addNewRandomIndividuals()
+	game.replaceBadIndividualsWithRandom()
 	game.crossBreedGoodIndividuals()
 	game.evaluatePopulation()
 	game.generation++
 	return game.doGetBestPath()
 }
-func (game Game) doGetBestPath() *Path {
+func (game *Game) doGetBestPath() *Path {
 	return game.population[0]
 }
-func (game Game) crossBreedGoodIndividuals() {
-
+func (game *Game) crossBreedGoodIndividuals() {
+	for i := 0; i < populationSize; i += 2 {
+		game.population[i] = game.breedPaths(game.population[i], game.population[i+1])
+	}
 }
-func (game Game) addNewRandomIndividuals() {
-
+func (game *Game) replaceBadIndividualsWithRandom() {
+	n := int(populationSize * (1 - randomnessPercent))
+	for i := n; i < populationSize; i++ {
+		game.population[i] = game.GenerateRandomPath(maxSteps)
+	}
 }
-func (game Game) eliminateBadIndividuals() {
-
-}
-
-func (game Game) evaluatePopulation() {
+func (game *Game) evaluatePopulation() {
 	for _, path := range game.population {
+		// TODO proper evaluation
+		// now it maximizes X and minimizes Y and it works
 		if path.Score < 1 {
-			path.Score = rand.Intn(1000)
+			path.Score = int(path.Points[0].X) - int(path.Points[0].Y)
 		}
 	}
 }
@@ -237,7 +243,7 @@ func Log(v interface{}) {
 	fmt.Printf(string(data) + "\n")
 }
 
-func (game Game) GenerateRandomPath(numberOfSteps int) *Path {
+func (game *Game) GenerateRandomPath(numberOfSteps int) *Path {
 	path := new(Path)
 	// start anywhere
 	startPoint := NewPoint(
@@ -256,7 +262,7 @@ func (game Game) GenerateRandomPath(numberOfSteps int) *Path {
 	return path
 }
 
-func (game Game) BreedPaths(p1 *Path, p2 *Path) *Path {
+func (game *Game) breedPaths(p1 *Path, p2 *Path) *Path {
 	newPath := new(Path)
 	for i, point1 := range p1.Points {
 		point2 := p2.Points[i]
